@@ -1,6 +1,17 @@
-# Tugas Akhir Pemrograman Web
+# Veteran Achieve
 
-Repo tugas akhir mata kuliah Pemrograman Web.
+Tugas akhir mata kuliah Pemrograman Web: platform web untuk mencari lomba, membentuk tim lomba lewat lobby ala game, dan ikut mentoring dalam satu tempat. Seminar ada sebagai pelengkap.
+
+## Fitur MVP (target UAS)
+
+- **Akun**: registrasi, login, dan profil skill (role utama, skill, portofolio).
+- **Discovery**: daftar lomba dengan filter (kategori, tingkat, deadline, biaya, mode, individu/tim), pencarian, halaman detail, bookmark. Seminar versi sederhana.
+- **Lobby tim**: buat lobby untuk satu lomba, browse lobby, join/invite, terima/tolak, ready check sampai lobby terkunci jadi tim.
+- **Mentoring**: direktori mentor dan booking sesi (khusus member), sesi lewat video call eksternal.
+- **Membership**: satu paket (Pro), bayar lewat payment gateway mode sandbox, status aktif hanya dari webhook yang signature-nya sudah diverifikasi.
+- **Admin**: verifikasi lomba dan mentor, lihat transaksi.
+
+Pengguna: peserta, ketua tim (host lobby), mentor, penyelenggara, admin.
 
 ## Tim
 
@@ -19,7 +30,7 @@ server/   Backend (Node.js + Express)
 .github/  CI, template PR & issue
 ```
 
-Stack ini titik awal yang ringan dan masih bisa diganti (misalnya ke React atau framework lain) kalau tim sepakat.
+Stack ini titik awal yang ringan. Pilihan final (misalnya Next.js/React di frontend, MySQL atau PostgreSQL, Midtrans atau Xendit) masih diputuskan tim.
 
 ## Menjalankan di lokal
 
