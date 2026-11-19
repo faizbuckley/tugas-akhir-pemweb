@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PARTICIPANT
+  MENTOR
+  ORGANIZER
+  ADMIN
+}
+enum LobbyStatus {
+  OPEN
+  FULL
+  LOCKED
+  DISBANDED
+}
+enum MemberStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  INVITED
+  KICKED
+  LEFT
+}
+enum VerifyStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(PARTICIPANT)
+  createdAt    DateTime @default(now())
+  skillProfile SkillProfile?
+  mentor       Mentor?
+  lobbiesHosted Lobby[] @relation("Host")
+  lobbyMembers LobbyMember[]
+  subscriptions Subscription[]
+  transactions Transaction[]
+  bookings     MentoringSession[]
+  competitionsSubmitted Competition[]
+}
+
+model SkillProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  mainRole  String
+  skills    String[]
+  portfolio String?
+  history   String?
+}
+
+model Competition {
+  id          String   @id @default(cuid())
+  title       String
+  organizer   String
+  category    String
+  level       String
+  deadline    DateTime
+  fee         Int      @default(0)
+  prize       String?
+  mode        String
+  teamBased   Boolean  @default(true)
+  description String
+  registerUrl String
+  posterUrl   String?
+  status      VerifyStatus @default(PENDING)
+  submittedById String?
+  submittedBy User?    @relation(fields: [submittedById], references: [id])
+  lobbies     Lobby[]
+  createdAt   DateTime @default(now())
+}
+
+model Seminar {
+  id          String   @id @default(cuid())
+  title       String
+  organizer   String
+  date        DateTime
+  mode        String
+  fee         Int      @default(0)
+  registerUrl String
+  status      VerifyStatus @default(PENDING)
+}
+
+model Lobby {
+  id            String   @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id])
+  hostId        String
+  host          User     @relation("Host", fields: [hostId], references: [id])
+  teamName      String
+  slots         Int
+  rolesNeeded   String[]
+  status        LobbyStatus @default(OPEN)
+  members       LobbyMember[]
+  createdAt     DateTime @default(now())
+}
+
+model LobbyMember {
+  id      String @id @default(cuid())
+  lobbyId String
+  lobby   Lobby  @relation(fields: [lobbyId], references: [id])
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  role    String?
+  status  MemberStatus @default(PENDING)
+  ready   Boolean @default(false)
+  @@unique([lobbyId, userId])
+}
+
+model Mentor {
+  id        String @id @default(cuid())
+  userId    String @unique
+  user      User   @relation(fields: [userId], references: [id])
+  expertise String[]
+  bio       String
+  meetUrl   String?
+  rating    Float  @default(0)
+  status    VerifyStatus @default(PENDING)
+  sessions  MentoringSession[]
+}
+
+model MentoringSession {
+  id        String   @id @default(cuid())
+  mentorId  String
+  mentor    Mentor   @relation(fields: [mentorId], references: [id])
+  bookedById String
+  bookedBy  User     @relation(fields: [bookedById], references: [id])
+  lobbyId   String?
+  startsAt  DateTime
+  rating    Int?
+  review    String?
+}
+
+model Plan {
+  id            String @id @default(cuid())
+  name          String @unique
+  price         Int
+  durationDays  Int    @default(30)
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+  startsAt  DateTime
+  endsAt    DateTime
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  orderId     String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  planId      String
+  amount      Int
+  status      PaymentStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+}
