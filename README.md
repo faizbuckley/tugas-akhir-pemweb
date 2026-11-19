@@ -25,32 +25,26 @@ Pengguna: peserta, ketua tim (host lobby), mentor, penyelenggara, admin.
 ## Struktur
 
 ```
-client/   Frontend (Vite + HTML/CSS/JS)
-server/   Backend (Node.js + Express)
-.github/  CI, template PR & issue
+apps/web/   Frontend: Next.js + React + TypeScript + Tailwind
+apps/api/   Backend: Express + TypeScript, database PostgreSQL lewat Prisma
+            (skema di apps/api/prisma/schema.prisma)
+.github/    CI, template PR & issue
 ```
-
-Stack ini titik awal yang ringan. Pilihan final (misalnya Next.js/React di frontend, MySQL atau PostgreSQL, Midtrans atau Xendit) masih diputuskan tim.
 
 ## Menjalankan di lokal
 
-Butuh Node.js 20 ke atas.
+Butuh Node.js 20 ke atas dan PostgreSQL.
 
 ```bash
-# Terminal 1: backend di http://localhost:3000
-cd server
-npm install
-npm run dev
-
-# Terminal 2: frontend di http://localhost:5173
-cd client
-npm install
-npm run dev
+npm install                      # sekali, dari root repo
+cp apps/api/.env.example apps/api/.env   # lalu sesuaikan DATABASE_URL
+npm run db:migrate -w apps/api   # bikin tabel dari skema Prisma
+npm run dev                      # jalanin web + api barengan
 ```
 
-Request dari frontend ke `/api/...` otomatis diteruskan ke backend (lihat `client/vite.config.js`). Cek koneksinya di halaman awal, atau buka http://localhost:3000/api/health.
+Web jalan di http://localhost:3000, API di http://localhost:4000 (cek http://localhost:4000/health).
 
-Tes backend: `cd server && npm test`.
+Sebelum push, cek dulu: `npm run lint -w apps/web`, `npm run build -w apps/web`, `npm run build -w apps/api`. CI menjalankan cek yang sama di setiap PR.
 
 ## Alur kerja
 

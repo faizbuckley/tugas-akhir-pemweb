@@ -4,8 +4,8 @@
 Closes #
 
 ## Bagian
-- [ ] Frontend (client)
-- [ ] Backend (server)
+- [ ] Frontend (apps/web)
+- [ ] Backend (apps/api)
 - [ ] UI/UX / aset desain
 - [ ] Lainnya (CI, dokumentasi, dll.)
 
