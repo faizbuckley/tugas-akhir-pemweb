@@ -63,6 +63,15 @@ enum MemberStatus {
   LEFT
 }
 
+enum Jenjang {
+  D3
+  S1
+  PROFESI
+  S2
+  SPESIALIS
+  S3
+}
+
 enum ApplicationStatus {
   PENDING
   APPROVED
@@ -97,10 +106,12 @@ model Faculty {
   campusId Int
   campus   Campus         @relation(fields: [campusId], references: [id])
   name     String
+  code     String? // singkatan, mis. FIK
   programs StudyProgram[]
   users    User[]
 
   @@unique([campusId, name])
+  @@unique([campusId, code])
 }
 
 model StudyProgram {
@@ -108,9 +119,10 @@ model StudyProgram {
   facultyId Int
   faculty   Faculty @relation(fields: [facultyId], references: [id])
   name      String
+  level     Jenjang @default(S1) // nama prodi bisa sama di jenjang berbeda
   users     User[]
 
-  @@unique([facultyId, name])
+  @@unique([facultyId, name, level])
 }
 
 // ───────────────────────── Akun, RBAC, profil ─────────────────────────
