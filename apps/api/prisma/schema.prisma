@@ -1,3 +1,6 @@
+// Veteran Achieve - draft skema v0.1 (mengacu PRD v0.5 + catatan PM: tabel kegiatan, tautan undangan lobby)
+// Status: DRAFT untuk dibahas tim. Belum ada migrasi yang dibuat dari file ini.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,31 +10,71 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ───────────────────────── Enum ─────────────────────────
+
 enum Role {
   PARTICIPANT
   MENTOR
-  ORGANIZER
   ADMIN
 }
+
+enum JenisKegiatan {
+  LOMBA
+  SEMINAR
+}
+
+enum Mode {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum Tingkat {
+  KAMPUS
+  REGIONAL
+  NASIONAL
+  INTERNASIONAL
+}
+
+enum TipePeserta {
+  INDIVIDU
+  TIM
+}
+
 enum LobbyStatus {
   OPEN
   FULL
   LOCKED
   DISBANDED
 }
+
+// Asal baris LobbyMember: HOST (pembuat), REQUEST (pengguna minta join), INVITE (host mengundang)
+enum MemberOrigin {
+  HOST
+  REQUEST
+  INVITE
+}
+
 enum MemberStatus {
   PENDING
   ACCEPTED
   REJECTED
-  INVITED
   KICKED
   LEFT
 }
-enum VerifyStatus {
+
+enum ApplicationStatus {
   PENDING
   APPROVED
   REJECTED
 }
+
+enum SessionStatus {
+  BOOKED
+  COMPLETED
+  CANCELED
+}
+
 enum PaymentStatus {
   PENDING
   PAID
@@ -39,140 +82,346 @@ enum PaymentStatus {
   EXPIRED
 }
 
+// ───────────────────────── Master kampus (NFR-22) ─────────────────────────
+
+model Campus {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  emailDomain String    @unique // contoh: mahasiswa.upnvj.ac.id
+  faculties   Faculty[]
+  users       User[]
+}
+
+model Faculty {
+  id       Int            @id @default(autoincrement())
+  campusId Int
+  campus   Campus         @relation(fields: [campusId], references: [id])
+  name     String
+  programs StudyProgram[]
+  users    User[]
+
+  @@unique([campusId, name])
+}
+
+model StudyProgram {
+  id        Int     @id @default(autoincrement())
+  facultyId Int
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+  name      String
+  users     User[]
+
+  @@unique([facultyId, name])
+}
+
+// ───────────────────────── Akun, RBAC, profil ─────────────────────────
+
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         Role     @default(PARTICIPANT)
-  createdAt    DateTime @default(now())
-  skillProfile SkillProfile?
-  mentor       Mentor?
-  lobbiesHosted Lobby[] @relation("Host")
-  lobbyMembers LobbyMember[]
-  subscriptions Subscription[]
-  transactions Transaction[]
-  bookings     MentoringSession[]
-  competitionsSubmitted Competition[]
+  id             String        @id @default(cuid())
+  googleSub      String        @unique // id akun Google; tanpa password (NFR-1)
+  email          String        @unique
+  name           String
+  avatarUrl      String?
+  campusId       Int? // null untuk mentor eksternal / admin seed
+  campus         Campus?       @relation(fields: [campusId], references: [id])
+  facultyId      Int?
+  faculty        Faculty?      @relation(fields: [facultyId], references: [id])
+  studyProgramId Int?
+  studyProgram   StudyProgram? @relation(fields: [studyProgramId], references: [id])
+  angkatan       Int?
+  createdAt      DateTime      @default(now())
+  deletedAt      DateTime? // soft delete / anonimisasi (FR-46), transaksi tetap utuh
+
+  roles              UserRole[]
+  skillProfile       SkillProfile?
+  mentor             Mentor?
+  mentorApplications MentorApplication[]
+  bookmarks          Bookmark[]
+  lobbiesHosted      Lobby[]             @relation("LobbyHost")
+  lobbyMemberships   LobbyMember[]
+  subscriptions      Subscription[]
+  transactions       Transaction[]
+  bookedSessions     MentoringSession[]
+  notifications      Notification[]
+  kegiatanCreated    Kegiatan[]
+}
+
+model UserRole {
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role
+
+  @@id([userId, role])
 }
 
 model SkillProfile {
   id        String   @id @default(cuid())
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id])
-  mainRole  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mainRole  String // wajib sebelum buat/join lobby (FR-3); daftar final dari UI/UX
   skills    String[]
   portfolio String?
-  history   String?
+  history   String? // riwayat lomba
+  updatedAt DateTime @updatedAt
 }
 
-model Competition {
-  id          String   @id @default(cuid())
-  title       String
-  organizer   String
-  category    String
-  level       String
-  deadline    DateTime
-  fee         Int      @default(0)
+// ───────────────────────── Kegiatan (lomba + seminar) ─────────────────────────
+
+model KegiatanCategory {
+  id       Int        @id @default(autoincrement())
+  name     String     @unique
+  kegiatan Kegiatan[]
+}
+
+model Kegiatan {
+  id           String        @id @default(cuid())
+  jenis        JenisKegiatan
+  title        String
+  organizer    String
+  description  String
+  mode         Mode
+  fee          Int           @default(0)
+  registerUrl  String
+  posterUrl    String?
+  published    Boolean       @default(false)
+  // Dihitung server saat simpan: LOMBA = deadline, SEMINAR = startsAt. Listing publik: published AND visibleUntil >= now()
+  visibleUntil DateTime
+
+  // khusus LOMBA (nullable untuk SEMINAR; divalidasi zod discriminated union)
+  categoryId  Int?
+  category    KegiatanCategory? @relation(fields: [categoryId], references: [id])
+  tingkat     Tingkat?
+  deadline    DateTime?
   prize       String?
-  mode        String
-  teamBased   Boolean  @default(true)
-  description String
-  registerUrl String
-  posterUrl   String?
-  status      VerifyStatus @default(PENDING)
-  submittedById String?
-  submittedBy User?    @relation(fields: [submittedById], references: [id])
-  lobbies     Lobby[]
+  tipePeserta TipePeserta?
+  teamSizeMax Int? // batas slot lobby (FR-12)
+
+  // khusus SEMINAR
+  speaker  String?
+  location String?
+  startsAt DateTime?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookmarks Bookmark[]
+  lobbies   Lobby[] // hanya jenis LOMBA + tipePeserta TIM (dicek di service)
+
+  @@index([jenis, published, visibleUntil])
+  @@index([categoryId])
 }
 
-model Seminar {
-  id          String   @id @default(cuid())
-  title       String
-  organizer   String
-  date        DateTime
-  mode        String
-  fee         Int      @default(0)
-  registerUrl String
-  status      VerifyStatus @default(PENDING)
+model Bookmark {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kegiatanId String
+  kegiatan   Kegiatan @relation(fields: [kegiatanId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([userId, kegiatanId])
 }
+
+// ───────────────────────── Lobby ─────────────────────────
 
 model Lobby {
-  id            String   @id @default(cuid())
-  competitionId String
-  competition   Competition @relation(fields: [competitionId], references: [id])
-  hostId        String
-  host          User     @relation("Host", fields: [hostId], references: [id])
-  teamName      String
-  slots         Int
-  rolesNeeded   String[]
-  status        LobbyStatus @default(OPEN)
-  members       LobbyMember[]
-  createdAt     DateTime @default(now())
+  id          String      @id @default(cuid())
+  kegiatanId  String
+  kegiatan    Kegiatan    @relation(fields: [kegiatanId], references: [id])
+  hostId      String
+  host        User        @relation("LobbyHost", fields: [hostId], references: [id])
+  teamName    String
+  slots       Int // termasuk host, minimal 2
+  rolesNeeded String[] // satu entri per slot selain host
+  status      LobbyStatus @default(OPEN)
+  inviteCode  String      @unique // tautan undangan; bisa di-regenerate host
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt // dipakai polling / ETag (FR-20)
+
+  members  LobbyMember[]
+  sessions MentoringSession[]
+
+  @@index([kegiatanId, status])
+  @@index([hostId])
 }
 
 model LobbyMember {
-  id      String @id @default(cuid())
-  lobbyId String
-  lobby   Lobby  @relation(fields: [lobbyId], references: [id])
-  userId  String
-  user    User   @relation(fields: [userId], references: [id])
-  role    String?
-  status  MemberStatus @default(PENDING)
-  ready   Boolean @default(false)
+  id        String       @id @default(cuid())
+  lobbyId   String
+  lobby     Lobby        @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  origin    MemberOrigin
+  status    MemberStatus @default(PENDING)
+  role      String? // peran yang diambil di tim
+  ready     Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // satu baris per (lobby, user); request ulang memakai ulang baris yang sama
   @@unique([lobbyId, userId])
+  @@index([userId, status])
+}
+
+// ───────────────────────── Mentoring ─────────────────────────
+
+model MentorApplication {
+  id            String            @id @default(cuid())
+  userId        String? // null untuk mentor eksternal yang belum punya akun
+  user          User?             @relation(fields: [userId], references: [id])
+  email         String // email Google yang akan dipakai login (whitelist setelah APPROVED)
+  fullName      String
+  age           Int?
+  gender        String?
+  whatsapp      String
+  photoUrl      String?
+  currentStatus String // "BEKERJA" | "MAHASISWA"
+  jobRole       String?
+  company       String?
+  campusName    String?
+  semester      Int?
+  nim           String?
+  campusEmail   String?
+  field         String // bidang yang dilamar
+  motivation    String
+  achievements  Json // [{ title, evidenceUrl }]
+  availability  String // ringkasan jadwal dari form
+  meetUrl       String
+  cvUrl         String
+  portfolioUrl  String?
+  consent       Boolean
+  status        ApplicationStatus @default(PENDING)
+  reviewNote    String?
+  createdAt     DateTime          @default(now())
+  reviewedAt    DateTime?
+
+  @@index([status])
+  @@index([email])
 }
 
 model Mentor {
-  id        String @id @default(cuid())
-  userId    String @unique
-  user      User   @relation(fields: [userId], references: [id])
-  expertise String[]
-  bio       String
-  meetUrl   String?
-  rating    Float  @default(0)
-  status    VerifyStatus @default(PENDING)
-  sessions  MentoringSession[]
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  expertise   String[]
+  bio         String
+  meetUrl     String
+  ratingAvg   Float    @default(0)
+  ratingCount Int      @default(0)
+  active      Boolean  @default(true)
+
+  slots    MentorSlot[]
+  sessions MentoringSession[]
+}
+
+model MentorSlot {
+  id       String            @id @default(cuid())
+  mentorId String
+  mentor   Mentor            @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  startsAt DateTime
+  endsAt   DateTime
+  session  MentoringSession?
+
+  @@unique([mentorId, startsAt])
 }
 
 model MentoringSession {
-  id        String   @id @default(cuid())
-  mentorId  String
-  mentor    Mentor   @relation(fields: [mentorId], references: [id])
-  bookedById String
-  bookedBy  User     @relation(fields: [bookedById], references: [id])
-  lobbyId   String?
-  startsAt  DateTime
-  rating    Int?
-  review    String?
+  id             String        @id @default(cuid())
+  slotId         String        @unique // satu slot hanya satu booking
+  slot           MentorSlot    @relation(fields: [slotId], references: [id])
+  mentorId       String
+  mentor         Mentor        @relation(fields: [mentorId], references: [id])
+  bookedById     String
+  bookedBy       User          @relation(fields: [bookedById], references: [id])
+  lobbyId        String? // diisi bila sesi untuk tim (lobby Terkunci)
+  lobby          Lobby?        @relation(fields: [lobbyId], references: [id])
+  subscriptionId String // untuk hitung kuota per periode (FR-25)
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
+  status         SessionStatus @default(BOOKED)
+  rating         Int? // 1-5
+  review         String?
+  createdAt      DateTime      @default(now())
+
+  @@index([bookedById])
+  @@index([subscriptionId, status])
 }
 
+// ───────────────────────── Membership & pembayaran ─────────────────────────
+
+// Kuota di sini, bukan di kode, supaya angka bisa diubah tanpa deploy (null = tanpa batas)
 model Plan {
-  id            String @id @default(cuid())
-  name          String @unique
-  price         Int
-  durationDays  Int    @default(30)
+  id                String @id @default(cuid())
+  code              String @unique // "FREE" | "PRO"
+  name              String
+  price             Int    @default(0)
+  durationDays      Int    @default(30)
+  maxBookmarks      Int?
+  maxActiveLobbies  Int?
+  sessionsPerPeriod Int    @default(0)
+
   subscriptions Subscription[]
+  transactions  Transaction[]
 }
 
 model Subscription {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  planId    String
-  plan      Plan     @relation(fields: [planId], references: [id])
-  startsAt  DateTime
-  endsAt    DateTime
+  id            String             @id @default(cuid())
+  userId        String
+  user          User               @relation(fields: [userId], references: [id])
+  planId        String
+  plan          Plan               @relation(fields: [planId], references: [id])
+  startsAt      DateTime
+  endsAt        DateTime
+  transactionId String             @unique
+  transaction   Transaction        @relation(fields: [transactionId], references: [id])
+  sessions      MentoringSession[]
+
+  @@index([userId, endsAt])
 }
 
 model Transaction {
-  id          String   @id @default(cuid())
-  orderId     String   @unique
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  planId      String
-  amount      Int
-  status      PaymentStatus @default(PENDING)
-  createdAt   DateTime @default(now())
+  id         String        @id @default(cuid())
+  orderId    String        @unique // dikirim ke gateway
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  planId     String
+  plan       Plan          @relation(fields: [planId], references: [id])
+  amount     Int
+  status     PaymentStatus @default(PENDING)
+  gatewayRef String?
+  paymentUrl String?
+  paidAt     DateTime?
+  createdAt  DateTime      @default(now())
+
+  subscription  Subscription?
+  webhookEvents WebhookEvent[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// Idempotensi + audit webhook (NFR-3, FR-31)
+model WebhookEvent {
+  id             String       @id @default(cuid())
+  eventKey       String       @unique // mis. orderId:transaction_status:status_code
+  transactionId  String?
+  transaction    Transaction? @relation(fields: [transactionId], references: [id])
+  signatureValid Boolean
+  payload        Json
+  processedAt    DateTime?
+  receivedAt     DateTime     @default(now())
+}
+
+// ───────────────────────── Notifikasi dalam aplikasi ─────────────────────────
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // DEADLINE_REMINDER | MEMBERSHIP_EXPIRING | LOBBY_* ...
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
 }
