@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    name: Web (lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint -w apps/web
+      - run: npm run build -w apps/web
+
+  api:
+    name: API (prisma + typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx -w apps/api prisma validate
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/ci
+      - run: npm run db:generate -w apps/api
+      - run: npm run build -w apps/api
