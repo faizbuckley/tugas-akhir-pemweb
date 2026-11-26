@@ -1,55 +1,32 @@
 import { Router } from "express";
-import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { notFound } from "../lib/errors.js";
+import { profileInput } from "../schemas/profile.js";
+import { getMe, updateProfile } from "../services/profile.js";
+import { deleteAccount } from "../services/account.js";
+import { listBookmarks } from "../services/bookmark.js";
+import { pageQuery } from "../schemas/pagination.js";
+import { clearSessionCookie } from "../lib/jwt.js";
 
 export const meRouter = Router();
+meRouter.use(requireAuth);
 
-meRouter.get("/", requireAuth, async (req, res) => {
-  const userId = req.user!.id;
+meRouter.get("/", async (req, res) => {
+  res.json({ data: await getMe(req.user!.id) });
+});
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      avatarUrl: true,
-      angkatan: true,
-      campus: { select: { id: true, name: true } },
-      faculty: { select: { id: true, name: true, code: true } },
-      studyProgram: { select: { id: true, name: true, level: true } },
-      skillProfile: true,
-    },
-  });
-  if (!user) throw notFound();
+meRouter.get("/bookmarks", async (req, res) => {
+  const { page, limit } = pageQuery.parse(req.query);
+  res.json(await listBookmarks(req.user!.id, page, limit));
+});
 
-  const now = new Date();
-  const [subscription, freePlan] = await Promise.all([
-    prisma.subscription.findFirst({
-      where: { userId, startsAt: { lte: now }, endsAt: { gt: now } },
-      orderBy: { endsAt: "desc" },
-      include: { plan: true },
-    }),
-    prisma.plan.findUnique({ where: { code: "FREE" } }),
-  ]);
-  const plan = subscription?.plan ?? freePlan;
+meRouter.delete("/", async (req, res) => {
+  await deleteAccount(req.user!.id);
+  clearSessionCookie(res);
+  res.status(204).end();
+});
 
-  res.json({
-    data: {
-      ...user,
-      roles: req.user!.roles,
-      profileComplete: Boolean(user.skillProfile?.mainRole),
-      plan: plan
-        ? {
-            code: plan.code,
-            name: plan.name,
-            maxBookmarks: plan.maxBookmarks,
-            maxActiveLobbies: plan.maxActiveLobbies,
-            sessionsPerPeriod: plan.sessionsPerPeriod,
-            endsAt: subscription?.endsAt ?? null,
-          }
-        : null,
-    },
-  });
+meRouter.patch("/profile", async (req, res) => {
+  const input = profileInput.parse(req.body);
+  await updateProfile(req.user!.id, input);
+  res.json({ data: await getMe(req.user!.id) });
 });

@@ -21,6 +21,8 @@ export const forbidden = (message = "Kamu tidak punya akses ke sumber ini") =>
 export const notFound = (message = "Data tidak ditemukan") =>
   new AppError(404, "NOT_FOUND", message);
 export const conflict = (message: string) => new AppError(409, "CONFLICT", message);
+// Batas paket tercapai; FE memakai kode ini untuk menampilkan ajakan upgrade (FR-42).
+export const quotaExceeded = (message: string) => new AppError(403, "QUOTA_EXCEEDED", message);
 
 export function zodFields(err: ZodError): Record<string, string> {
   const fields: Record<string, string> = {};
@@ -51,6 +53,15 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
         fields: zodFields(err),
       },
     });
+    return;
+  }
+  // Error dari express.json(): kesalahan di sisi klien, bukan server.
+  if (err?.type === "entity.parse.failed") {
+    res.status(400).json({ error: { code: "INVALID_JSON", message: "Body bukan JSON yang valid" } });
+    return;
+  }
+  if (err?.type === "entity.too.large") {
+    res.status(413).json({ error: { code: "PAYLOAD_TOO_LARGE", message: "Body terlalu besar" } });
     return;
   }
   console.error(err);

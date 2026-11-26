@@ -6,6 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "pretest": "tsx test/prepare-db.ts",
+    "test": "node --import tsx --import ./test/setup-env.ts --test --test-concurrency=1 test/*.test.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed"

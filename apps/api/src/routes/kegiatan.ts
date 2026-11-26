@@ -3,34 +3,12 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { notFound } from "../lib/errors.js";
 import { listQuery } from "../schemas/kegiatan.js";
+import { requireAuth } from "../middleware/auth.js";
+import { listSelect, publicWhere } from "../services/kegiatan.js";
+import { addBookmark, removeBookmark } from "../services/bookmark.js";
 
 export const kegiatanRouter = Router();
 export const categoryRouter = Router();
-
-const listSelect = {
-  id: true,
-  jenis: true,
-  title: true,
-  organizer: true,
-  mode: true,
-  fee: true,
-  posterUrl: true,
-  visibleUntil: true,
-  tingkat: true,
-  deadline: true,
-  prize: true,
-  tipePeserta: true,
-  teamSizeMax: true,
-  startsAt: true,
-  location: true,
-  category: { select: { id: true, name: true } },
-} satisfies Prisma.KegiatanSelect;
-
-// Satu-satunya definisi "tayang di publik": sudah dipublikasikan dan belum lewat waktu.
-export const publicWhere = (): Prisma.KegiatanWhereInput => ({
-  published: true,
-  visibleUntil: { gte: new Date() },
-});
 
 kegiatanRouter.get("/", async (req, res) => {
   const q = listQuery.parse(req.query);
@@ -113,6 +91,17 @@ kegiatanRouter.get("/:id", async (req, res) => {
       : [];
 
   res.json({ data: { ...item, lobbies } });
+});
+
+kegiatanRouter.post("/:id/bookmark", requireAuth, async (req, res) => {
+  const kegiatanId = String(req.params.id);
+  const { created, quota } = await addBookmark(req.user!.id, kegiatanId);
+  res.status(created ? 201 : 200).json({ data: { kegiatanId, quota } });
+});
+
+kegiatanRouter.delete("/:id/bookmark", requireAuth, async (req, res) => {
+  await removeBookmark(req.user!.id, String(req.params.id));
+  res.status(204).end();
 });
 
 categoryRouter.get("/", async (_req, res) => {

@@ -4,14 +4,17 @@ const mode = z.enum(["ONLINE", "OFFLINE", "HYBRID"]);
 const tingkat = z.enum(["KAMPUS", "REGIONAL", "NASIONAL", "INTERNASIONAL"]);
 const tipePeserta = z.enum(["INDIVIDU", "TIM"]);
 
+// Hanya http/https: link ini diklik pengguna.
+const webUrl = z.url({ protocol: /^https?$/, error: "URL tidak valid" }).max(500);
+
 const common = {
   title: z.string().trim().min(3, "Minimal 3 karakter").max(150),
   organizer: z.string().trim().min(2, "Minimal 2 karakter").max(120),
   description: z.string().trim().min(10, "Minimal 10 karakter").max(5000),
   mode,
   fee: z.coerce.number().int().min(0, "Tidak boleh negatif").default(0),
-  registerUrl: z.url("URL tidak valid").max(500),
-  posterUrl: z.url("URL tidak valid").max(500).nullish(),
+  registerUrl: webUrl,
+  posterUrl: webUrl.nullish(),
 };
 
 export const lombaSchema = z
