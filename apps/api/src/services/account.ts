@@ -1,14 +1,16 @@
-import { prisma } from "../lib/prisma.js";
+import { inTransaction, leaveAllLobbies } from "./lobby-core.js";
 
 /**
  * Hapus akun (FR-46): baris User dipertahankan dan dianonimkan, supaya transaksi tetap utuh.
  * googleSub dan email dilepas, jadi login ulang membuat akun baru yang kosong.
  *
- * TODO Sprint 2: keluarkan pengguna dari lobby aktif dan batalkan sesi mentoring yang masih BOOKED
- * (endpoint lobby dan sesi belum ada, jadi datanya belum bisa terbentuk).
+ * Pengguna dikeluarkan dari lobby aktif; tim yang sudah terkunci tetap tercatat.
+ *
+ * TODO modul mentoring: batalkan sesi yang masih BOOKED (endpoint sesi belum ada).
  */
 export async function deleteAccount(userId: string) {
-  await prisma.$transaction(async (tx) => {
+  await inTransaction(async (tx) => {
+    await leaveAllLobbies(tx, userId);
     const { email } = await tx.user.findUniqueOrThrow({
       where: { id: userId },
       select: { email: true },

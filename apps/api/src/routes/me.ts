@@ -5,6 +5,8 @@ import { getMe, updateProfile } from "../services/profile.js";
 import { deleteAccount } from "../services/account.js";
 import { listBookmarks } from "../services/bookmark.js";
 import { pageQuery } from "../schemas/pagination.js";
+import { expireLobbies } from "../services/lobby-core.js";
+import { myLobbies } from "../services/lobby-view.js";
 import { clearSessionCookie } from "../lib/jwt.js";
 
 export const meRouter = Router();
@@ -17,6 +19,12 @@ meRouter.get("/", async (req, res) => {
 meRouter.get("/bookmarks", async (req, res) => {
   const { page, limit } = pageQuery.parse(req.query);
   res.json(await listBookmarks(req.user!.id, page, limit));
+});
+
+meRouter.get("/lobbies", async (req, res) => {
+  const { page, limit } = pageQuery.parse(req.query);
+  await expireLobbies();
+  res.json(await myLobbies(req.user!.id, page, limit));
 });
 
 meRouter.delete("/", async (req, res) => {

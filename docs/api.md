@@ -1,10 +1,10 @@
-# API Veteran Achieve (draft v0.2)
+# API Veteran Achieve (draft v0.3)
 
 Base URL: `/api`. Format JSON. Sesi: JWT di cookie `httpOnly` (`SameSite=Lax`).
 Auth: `-` publik, `U` login, `H` host lobby, `M` mentor, `A` admin.
 Prioritas mengikuti PRD (M = Must, S = Should, C = Could). Tandai di sini sebelum dipakai FE (NFR-12).
 
-**Status:** yang sudah bisa dipakai: Auth dan akun, Kegiatan (termasuk bookmark dan admin). Lobby, Mentoring, Membership, dan Admin (mentor, transaksi) **belum dibuat**.
+**Status:** yang sudah bisa dipakai: Auth dan akun, Kegiatan (termasuk bookmark dan admin), Lobby (tanpa chat dan rekomendasi). Mentoring, Membership, dan Admin (mentor, transaksi) **belum dibuat**.
 
 ## Konvensi
 
@@ -19,6 +19,7 @@ Prioritas mengikuti PRD (M = Must, S = Should, C = Could). Tandai di sini sebelu
 | 400 | `INVALID_JSON` | Body bukan JSON valid |
 | 401 | `UNAUTHORIZED` | Belum login atau sesi tidak berlaku |
 | 403 | `FORBIDDEN` | Peran tidak cukup |
+| 403 | `PROFILE_INCOMPLETE` | Role utama belum diisi; arahkan ke halaman profil (FR-3) |
 | 403 | `QUOTA_EXCEEDED` | Batas paket tercapai; tampilkan ajakan upgrade (FR-42) |
 | 404 | `NOT_FOUND` | Data atau endpoint tidak ada |
 | 409 | `CONFLICT` | Bentrok dengan keadaan data |
@@ -36,6 +37,7 @@ Prioritas mengikuti PRD (M = Must, S = Should, C = Could). Tandai di sini sebelu
 | GET | `/me` | U | FR-3 | Profil, peran, paket aktif, `usage.bookmarks` |
 | PATCH | `/me/profile` | U | FR-3, 46 | Kirim hanya kolom yang diubah; balasan sama dengan `GET /me` |
 | DELETE | `/me` | U | FR-46 | `204`; akun dianonimkan, cookie dihapus |
+| GET | `/users` | U | FR-16, 48 | Cari orang untuk diundang: `q` (nama), `facultyId`, `studyProgramId`; hanya peserta dengan role utama, tanpa diri sendiri |
 | GET | `/users/:id` | U | FR-3 | Profil publik (tanpa email) |
 | GET | `/master/faculties` | U | NFR-22 | `[{ id, name, code, programs: [{ id, name, level }] }]`, sebatas kampus pengguna |
 
@@ -57,7 +59,7 @@ Kolom lain ditolak. `profileComplete` bernilai `true` bila `mainRole` terisi.
 
 ### `DELETE /me`
 
-Data pribadi, profil skill, bookmark, notifikasi, peran, dan pengajuan mentor dihapus; transaksi dan langganan tetap ada. Login lagi dengan email yang sama membuat akun baru yang kosong (status Pro tidak ikut). Penanganan lobby aktif dan sesi mentoring menyusul di Sprint 2.
+Data pribadi, profil skill, bookmark, notifikasi, peran, dan pengajuan mentor dihapus; transaksi dan langganan tetap ada. Login lagi dengan email yang sama membuat akun baru yang kosong (status Pro tidak ikut). Pengguna keluar dari semua lobby aktif (status host berpindah bila perlu) dan permintaan yang menunggu dibatalkan; tim yang sudah terkunci tetap tercatat. Pembatalan sesi mentoring menyusul bersama modul mentoring.
 
 ## Kegiatan (lomba dan seminar)
 
@@ -82,27 +84,58 @@ Kolom `POST /admin/kegiatan`: umum `title`, `organizer`, `description`, `mode`, 
 
 ## Lobby
 
-| Method | Path | Auth | FR | Catatan |
+Aturan lengkap dan transisi status ada di [lobby.md](lobby.md). Semua aksi `POST` membalas **detail lobby** terbaru, kecuali disebut lain.
+
+| Method | Path | Auth | FR | Body / catatan |
 |---|---|---|---|---|
-| POST | `/lobbies` | U | FR-12, 21 | Wajib `mainRole`; hanya lomba tim; cek kuota lobby aktif |
-| GET | `/lobbies` | U | FR-13, 48 | `kegiatanId`, `role`, `status=OPEN`, `faculty` |
-| GET | `/lobbies/:id` | U | FR-20 | Dukung `If-None-Match` / `updatedAt` untuk polling |
-| GET | `/lobbies/by-code/:code` | - | tautan | Pratinjau tanpa data anggota |
-| POST | `/lobbies/:id/join-requests` | U | FR-14 | Juga dipakai dari tautan undangan |
-| POST | `/lobbies/:id/join-requests/:userId/accept` | H | FR-15 | Transaksi + lock baris |
+| GET | `/lobbies` | U | FR-13, 48 | Hanya `OPEN`. `kegiatanId`, `role` (tulisan persis seperti di `openRoles`), `facultyId` dan `studyProgramId` (milik host), `page`, `limit` |
+| POST | `/lobbies` | U | FR-12, 21 | `{ kegiatanId, teamName, slots, rolesNeeded }`; `rolesNeeded` berisi `slots - 1` role. `201` |
+| GET | `/lobbies/:id` | U | FR-20 | Detail; dipakai polling |
+| GET | `/lobbies/by-code/:code` | - | tautan | Pratinjau: `id, teamName, status, slots, filledSlots, openRoles, kegiatan`. Rate limit |
+| POST | `/lobbies/:id/join-requests` | U | FR-14 | `{ role }`. `201`. Juga dipakai dari tautan undangan |
+| POST | `/lobbies/:id/join-requests/:userId/accept` | H | FR-15 | |
 | POST | `/lobbies/:id/join-requests/:userId/reject` | H | FR-15 | |
-| POST | `/lobbies/:id/invites` | H | FR-16 | `{ "userId" }` |
+| POST | `/lobbies/:id/invites` | H | FR-16 | `{ userId, role }`. `201` |
 | POST | `/lobbies/:id/invites/accept` | U | FR-16 | Oleh yang diundang |
-| POST | `/lobbies/:id/invites/reject` | U | FR-16 | |
+| POST | `/lobbies/:id/invites/reject` | U | FR-16 | Oleh yang diundang |
 | POST | `/lobbies/:id/invite-code/regenerate` | H | tautan | Kode lama tidak berlaku |
-| POST | `/lobbies/:id/leave` | U | FR-17 | Reset semua `ready` |
-| POST | `/lobbies/:id/kick/:userId` | H | FR-17 | Reset semua `ready` |
-| POST | `/lobbies/:id/ready` | U | FR-18 | Hanya saat FULL; semua ready -> LOCKED |
+| POST | `/lobbies/:id/leave` | U | FR-17 | Anggota keluar, atau peminta membatalkan permintaan. Host keluar = status host pindah |
+| POST | `/lobbies/:id/kick/:userId` | H | FR-17 | Keluarkan anggota, atau batalkan undangan |
+| POST | `/lobbies/:id/ready` | U | FR-18 | `{ ready: true \| false }` (default `true`). Hanya saat `FULL` |
 | POST | `/lobbies/:id/disband` | H | FR-19 | |
-| GET | `/me/lobbies` | U | FR-21 | Host dan anggota |
-| GET | `/lobbies/:id/messages` | U | FR-22 (S) | |
-| POST | `/lobbies/:id/messages` | U | FR-22 (S) | |
-| GET | `/me/recommendations` | U | FR-41 (C) | Berbasis aturan role cocok |
+| GET | `/me/lobbies` | U | FR-21 | Berhalaman; lobby yang saya ikuti atau tunggu (termasuk undangan). Item = kartu + `me` |
+| GET | `/lobbies/:id/messages` | U | FR-22 (S) | Belum dibuat |
+| POST | `/lobbies/:id/messages` | U | FR-22 (S) | Belum dibuat |
+| GET | `/me/recommendations` | U | FR-41 (C) | Belum dibuat |
+
+### Bentuk data
+
+Kartu (`GET /lobbies`):
+
+```json
+{ "id": "...", "teamName": "...", "status": "OPEN", "slots": 3, "filledSlots": 1,
+  "openRoles": ["Frontend", "UI/UX"], "createdAt": "...",
+  "kegiatan": { "id": "...", "title": "...", "deadline": "..." },
+  "host": { "id": "...", "name": "...", "avatarUrl": null, "faculty": null, "studyProgram": null } }
+```
+
+Detail (`GET /lobbies/:id`): kolom kartu (tanpa `host`) ditambah `hostId`, `rolesNeeded`, `updatedAt`, dan:
+
+- `members`: `[{ userId, name, avatarUrl, faculty, studyProgram, role, ready, isHost }]` (yang sudah diterima)
+- `me`: `null`, atau `{ isHost, status, origin, role }`. `status`: `PENDING`, `ACCEPTED`, `REJECTED`, `KICKED`, `LEFT`. `origin`: `HOST`, `REQUEST`, `INVITE`
+- Hanya untuk host: `inviteCode`, dan `pending`: `[{ userId, name, ..., role, origin }]`
+
+Tombol di FE: `me.status = PENDING` dan `origin = INVITE` berarti tampilkan Terima/Tolak; tombol Siap aktif bila `status = FULL` dan `me.status = ACCEPTED`.
+
+### Error khusus lobby
+
+- `403 PROFILE_INCOMPLETE`: role utama belum diisi.
+- `403 QUOTA_EXCEEDED`: batas lobby aktif milik sendiri tercapai.
+- `409 CONFLICT`: lobby penuh/terkunci/bubar, role sudah terisi, sudah punya tim untuk lomba itu, atau (saat host menerima) peminta sudah mencapai batas. Tampilkan `message`, lalu muat ulang detail.
+
+### Polling
+
+Panggil `GET /lobbies/:id` tiap 3-5 detik dengan `fetch` biasa. Browser mengurus `ETag` sendiri. **Jangan memasang header `If-None-Match` secara manual**: `fetch` lalu menambahkan `Cache-Control: no-cache` dan server selalu membalas data penuh.
 
 ## Mentoring
 
@@ -142,6 +175,6 @@ Kolom `POST /admin/kegiatan`: umum `title`, `organizer`, `description`, `mode`, 
 
 - Kuota (bookmark, lobby aktif, sesi per periode) dibaca dari `Plan`, tidak ditulis di kode.
 - Akun Free dihitung memakai plan `FREE`; Pro aktif bila `Subscription.endsAt > now`.
-- `POST /lobbies/:id/join-requests`, accept, ready, leave, dan kick memakai transaksi dengan `SELECT ... FOR UPDATE` pada baris `Lobby` (NFR-6).
+- Semua aksi lobby memakai transaksi dengan kunci baris pada `Lobby`, lalu `User` untuk cek kuota (NFR-6).
 - Webhook dipasang sebelum `express.json()` agar raw body tersedia untuk signature.
 - `returnTo` pada login hanya menerima path internal (cegah open redirect).

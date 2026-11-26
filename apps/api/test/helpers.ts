@@ -21,10 +21,15 @@ export async function stopApi() {
   await prisma.$disconnect();
 }
 
-type Options = { cookie?: string; body?: unknown; rawBody?: string };
+type Options = {
+  cookie?: string;
+  body?: unknown;
+  rawBody?: string;
+  headers?: Record<string, string>;
+};
 
 export async function request(method: string, path: string, opts: Options = {}) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...opts.headers };
   if (opts.cookie) headers.cookie = opts.cookie;
   const body = opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body));
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -87,6 +92,18 @@ export async function createUser(data: { campusId?: number; role?: Role; name?: 
   });
   return { user, cookie: `${COOKIE_NAME}=${signToken(user.id)}` };
 }
+
+// Peserta yang profilnya cukup untuk masuk lobby.
+export async function createParticipant(
+  campusId?: number,
+  { mainRole = "Backend", name }: { mainRole?: string; name?: string } = {},
+) {
+  const account = await createUser({ campusId, name });
+  await prisma.skillProfile.create({ data: { userId: account.user.id, mainRole, skills: [] } });
+  return account;
+}
+
+export type Account = Awaited<ReturnType<typeof createUser>>;
 
 export async function createLomba(
   createdById: string,

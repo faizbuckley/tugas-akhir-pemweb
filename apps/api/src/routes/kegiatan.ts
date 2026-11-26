@@ -81,6 +81,7 @@ kegiatanRouter.get("/:id", async (req, res) => {
               teamName: true,
               slots: true,
               rolesNeeded: true,
+              openRoles: true,
               host: { select: { id: true, name: true, avatarUrl: true } },
               _count: { select: { members: { where: { status: "ACCEPTED" } } } },
             },

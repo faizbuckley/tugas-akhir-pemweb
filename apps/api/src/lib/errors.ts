@@ -21,6 +21,9 @@ export const forbidden = (message = "Kamu tidak punya akses ke sumber ini") =>
 export const notFound = (message = "Data tidak ditemukan") =>
   new AppError(404, "NOT_FOUND", message);
 export const conflict = (message: string) => new AppError(409, "CONFLICT", message);
+// Profil belum cukup (mis. role utama kosong); FE mengarahkan ke halaman profil (FR-3).
+export const profileIncomplete = (message: string) =>
+  new AppError(403, "PROFILE_INCOMPLETE", message);
 // Batas paket tercapai; FE memakai kode ini untuk menampilkan ajakan upgrade (FR-42).
 export const quotaExceeded = (message: string) => new AppError(403, "QUOTA_EXCEEDED", message);
 

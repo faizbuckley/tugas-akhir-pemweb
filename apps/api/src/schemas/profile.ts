@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pageQuery } from "./pagination.js";
 
 const skills = z
   .array(z.string().trim().min(1, "Skill tidak boleh kosong").max(40))
@@ -24,3 +25,12 @@ export const profileInput = z.strictObject({
 });
 
 export type ProfileInput = z.infer<typeof profileInput>;
+
+const masterId = z.coerce.number().int().positive().optional();
+
+export const userSearchQuery = pageQuery.extend({
+  q: z.string().trim().max(100).optional(),
+  facultyId: masterId,
+  studyProgramId: masterId,
+});
+export type UserSearchQuery = z.infer<typeof userSearchQuery>;

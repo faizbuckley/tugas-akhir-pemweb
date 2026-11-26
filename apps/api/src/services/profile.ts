@@ -2,7 +2,8 @@ import { prisma } from "../lib/prisma.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { getActivePlan } from "./plan.js";
 import { countBookmarks } from "./bookmark.js";
-import type { ProfileInput } from "../schemas/profile.js";
+import type { ProfileInput, UserSearchQuery } from "../schemas/profile.js";
+import type { Prisma } from "@prisma/client";
 
 const profileSelect = {
   id: true,
@@ -50,6 +51,36 @@ export async function getPublicProfile(userId: string) {
   });
   if (!user) throw notFound("Pengguna tidak ditemukan");
   return user;
+}
+
+// Hanya peserta yang profilnya cukup untuk diundang; diri sendiri tidak ikut.
+export async function searchUsers(viewerId: string, query: UserSearchQuery) {
+  const { page, limit, q, facultyId, studyProgramId } = query;
+  const where: Prisma.UserWhereInput = {
+    id: { not: viewerId },
+    deletedAt: null,
+    roles: { some: { role: "PARTICIPANT" } },
+    skillProfile: { isNot: null },
+    facultyId,
+    studyProgramId,
+    ...(q && { name: { contains: q, mode: "insensitive" } }),
+  };
+  const [total, rows] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+      select: profileSelect,
+    }),
+  ]);
+  const data = rows.map(({ skillProfile, campus: _campus, ...user }) => ({
+    ...user,
+    mainRole: skillProfile!.mainRole,
+    skills: skillProfile!.skills,
+  }));
+  return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
 }
 
 // Menentukan pasangan fakultas dan prodi yang konsisten dari input sebagian.

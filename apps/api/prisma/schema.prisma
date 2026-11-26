@@ -245,6 +245,7 @@ model Lobby {
   teamName    String
   slots       Int // termasuk host, minimal 2
   rolesNeeded String[] // satu entri per slot selain host
+  openRoles   String[]    @default([]) // role yang belum terisi; dijaga server, dipakai filter browse
   status      LobbyStatus @default(OPEN)
   inviteCode  String      @unique // tautan undangan; bisa di-regenerate host
   createdAt   DateTime    @default(now())
@@ -255,6 +256,7 @@ model Lobby {
 
   @@index([kegiatanId, status])
   @@index([hostId])
+  @@index([openRoles], type: Gin)
 }
 
 model LobbyMember {
@@ -267,6 +269,7 @@ model LobbyMember {
   status    MemberStatus @default(PENDING)
   role      String? // peran yang diambil di tim
   ready     Boolean      @default(false)
+  joinedAt  DateTime? // saat diterima; menentukan penerus bila host keluar
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
