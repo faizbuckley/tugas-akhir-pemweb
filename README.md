@@ -17,7 +17,7 @@ Pengguna: peserta, ketua tim (host lobby), mentor, penyelenggara, admin.
 
 | Peran | Anggota |
 | --- | --- |
-| Frontend | iAyman Gavrie Herdian & Irsyaad Yerremia Awwalludin |
+| Frontend | Ayman Gavrie Herdian & Irsyaad Yerremia Awwalludin |
 | Backend | Muzhaffar Shadiq |
 | UI/UX | Muammar Faiz Al Fattah & Zahran Nur Ramadhan |
 | PM & QA | Muhammad Faiz Rahman |
