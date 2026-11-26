@@ -1,38 +1,84 @@
-# API Veteran Achieve (draft v0.1)
+# API Veteran Achieve (draft v0.2)
 
 Base URL: `/api`. Format JSON. Sesi: JWT di cookie `httpOnly` (`SameSite=Lax`).
 Auth: `-` publik, `U` login, `H` host lobby, `M` mentor, `A` admin.
-Pagination: `?page=1&limit=12`. Error: `{ "error": { "code": "...", "message": "...", "fields": { "nama": "..." } } }`.
 Prioritas mengikuti PRD (M = Must, S = Should, C = Could). Tandai di sini sebelum dipakai FE (NFR-12).
+
+**Status:** yang sudah bisa dipakai: Auth dan akun, Kegiatan (termasuk bookmark dan admin). Lobby, Mentoring, Membership, dan Admin (mentor, transaksi) **belum dibuat**.
+
+## Konvensi
+
+- Sukses: `{ "data": ... }`; daftar berhalaman menambah `"meta": { "page", "limit", "total", "totalPages" }`. `204` tanpa body.
+- Pagination: `?page=1&limit=12` (maks. 50; daftar admin default 20).
+- Error: `{ "error": { "code": "...", "message": "...", "fields": { "nama": "..." } } }` (`fields` hanya untuk error validasi).
+- FE wajib mengirim cookie: `fetch(url, { credentials: "include" })`.
+
+| Status | `code` | Kapan |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Input salah |
+| 400 | `INVALID_JSON` | Body bukan JSON valid |
+| 401 | `UNAUTHORIZED` | Belum login atau sesi tidak berlaku |
+| 403 | `FORBIDDEN` | Peran tidak cukup |
+| 403 | `QUOTA_EXCEEDED` | Batas paket tercapai; tampilkan ajakan upgrade (FR-42) |
+| 404 | `NOT_FOUND` | Data atau endpoint tidak ada |
+| 409 | `CONFLICT` | Bentrok dengan keadaan data |
+| 413 | `PAYLOAD_TOO_LARGE` | Body terlalu besar |
+| 429 | `RATE_LIMITED` | Terlalu banyak percobaan |
+| 500 | `INTERNAL_ERROR` | Kesalahan server |
 
 ## Auth dan akun
 
 | Method | Path | Auth | FR | Catatan |
 |---|---|---|---|---|
-| GET | `/auth/google` | - | FR-1 | Redirect ke Google |
+| GET | `/auth/google` | - | FR-1 | Redirect ke Google. `?returnTo=/path` opsional. Rate limit (NFR-13) |
 | GET | `/auth/google/callback` | - | FR-1, NFR-1 | Cek signature, aud, `email_verified`, domain; set cookie. Rate limit (NFR-13) |
-| POST | `/auth/logout` | U | FR-2 | |
-| GET | `/me` | U | FR-3 | Profil, peran, paket aktif, kuota terpakai |
-| PATCH | `/me/profile` | U | FR-3, 46 | Profil skill |
-| DELETE | `/me` | U | FR-46 | Soft delete |
+| POST | `/auth/logout` | U | FR-2 | `204` |
+| GET | `/me` | U | FR-3 | Profil, peran, paket aktif, `usage.bookmarks` |
+| PATCH | `/me/profile` | U | FR-3, 46 | Kirim hanya kolom yang diubah; balasan sama dengan `GET /me` |
+| DELETE | `/me` | U | FR-46 | `204`; akun dianonimkan, cookie dihapus |
 | GET | `/users/:id` | U | FR-3 | Profil publik (tanpa email) |
-| GET | `/master/faculties` | U | NFR-22 | Fakultas dan prodi |
+| GET | `/master/faculties` | U | NFR-22 | `[{ id, name, code, programs: [{ id, name, level }] }]`, sebatas kampus pengguna |
+
+Login gagal dialihkan ke `WEB_ORIGIN/login?error=<kode>`: `google_denied`, `state_mismatch`, `google_failed`, `email_unverified`, `domain_not_allowed`, `mentor_pending`, `account_deleted`.
+
+### `PATCH /me/profile`
+
+| Kolom | Aturan |
+|---|---|
+| `facultyId` | angka atau `null`; harus milik kampus pengguna |
+| `studyProgramId` | angka atau `null`; `facultyId` terisi otomatis. Ganti fakultas mengosongkan prodi lama |
+| `angkatan` | 2000 sampai tahun depan, atau `null` |
+| `mainRole` | 2-50 karakter; **wajib** saat pertama kali mengisi skill, portofolio, atau riwayat |
+| `skills` | maks. 20, tiap item 1-40 karakter; kembar dibuang |
+| `portfolio` | URL `http`/`https` atau `null` |
+| `history` | maks. 2000 karakter atau `null` |
+
+Kolom lain ditolak. `profileComplete` bernilai `true` bila `mainRole` terisi.
+
+### `DELETE /me`
+
+Data pribadi, profil skill, bookmark, notifikasi, peran, dan pengajuan mentor dihapus; transaksi dan langganan tetap ada. Login lagi dengan email yang sama membuat akun baru yang kosong (status Pro tidak ikut). Penanganan lobby aktif dan sesi mentoring menyusul di Sprint 2.
 
 ## Kegiatan (lomba dan seminar)
 
 | Method | Path | Auth | FR | Catatan |
 |---|---|---|---|---|
-| GET | `/kegiatan` | - | FR-5-7, 11 | `jenis` (default `LOMBA`), `q`, `category`, `tingkat`, `mode`, `fee`, `tipePeserta`, `sort=deadline\|newest`. Hanya `published` dan `visibleUntil >= now` |
+| GET | `/kegiatan` | - | FR-5-7, 11 | `jenis` (default `LOMBA`), `q`, `categoryId`, `tingkat`, `mode`, `fee=free\|paid`, `tipePeserta`, `deadlineBefore`, `sort=deadline\|newest`. Hanya `published` dan `visibleUntil >= now` |
 | GET | `/kegiatan/:id` | - | FR-8 | Detail + lobby OPEN untuk lomba tim |
 | GET | `/categories` | - | FR-6 | |
-| POST | `/kegiatan/:id/bookmark` | U | FR-9 | Kuota dari `Plan.maxBookmarks` |
-| DELETE | `/kegiatan/:id/bookmark` | U | FR-9 | |
-| GET | `/me/bookmarks` | U | FR-9 | |
+| POST | `/kegiatan/:id/bookmark` | U | FR-9 | `201` baru, `200` sudah ada; `{ kegiatanId, quota: { used, max } }`. Hanya lomba yang tayang |
+| DELETE | `/kegiatan/:id/bookmark` | U | FR-9 | `204`, juga bila belum di-bookmark |
+| GET | `/me/bookmarks` | U | FR-9 | Terbaru dulu; item = kartu lomba + `bookmarkedAt`, `expired`; `meta.quota` |
 | GET | `/admin/kegiatan` | A | FR-45 | Semua status, filter `jenis`, `published` |
-| POST | `/admin/kegiatan` | A | FR-45 | zod discriminated union berdasarkan `jenis` |
+| GET | `/admin/kegiatan/:id` | A | FR-45 | |
+| POST | `/admin/kegiatan` | A | FR-45 | Kolom mengikuti `jenis`; selalu tersimpan sebagai draf |
 | PATCH | `/admin/kegiatan/:id` | A | FR-45 | |
 | DELETE | `/admin/kegiatan/:id` | A | FR-45 | Ditolak bila sudah ada lobby |
 | POST | `/admin/kegiatan/:id/publish` | A | FR-45 | `{ "published": true }` |
+
+Bookmark: `max: null` berarti tanpa batas. Free dibatasi `Plan.maxBookmarks` (5). Lomba yang sudah lewat tetap memakan kuota sampai dihapus; yang ditarik admin disembunyikan dan tidak dihitung. Seminar belum bisa di-bookmark (menunggu keputusan produk).
+
+Kolom `POST /admin/kegiatan`: umum `title`, `organizer`, `description`, `mode`, `fee`, `registerUrl`, `posterUrl`; LOMBA `categoryId`, `tingkat`, `deadline`, `prize`, `tipePeserta`, `teamSizeMax` (wajib bila `TIM`); SEMINAR `startsAt`, `location`, `speaker`. Link harus `http`/`https`.
 
 ## Lobby
 

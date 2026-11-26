@@ -46,6 +46,8 @@ Web jalan di http://localhost:3000, API di http://localhost:4000 (cek http://loc
 
 Sebelum push, cek dulu: `npm run lint -w apps/web`, `npm run build -w apps/web`, `npm run build -w apps/api`. CI menjalankan cek yang sama di setiap PR.
 
+Test API: `docker compose up -d`, lalu `npm test -w apps/api`. Test memakai database terpisah `veteran_achieve_test` yang isinya dihapus setiap kali jalan (belum dijalankan di CI).
+
 ## Alur kerja
 
 1. Ambil issue di board GitHub Projects, pindahkan ke **In Progress**.
